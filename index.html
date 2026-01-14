@@ -3,14 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>JigSolitaire Master</title>
-    <!-- Confetti Library for the celebration -->
+    <title>JigSolitaire Master - Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        :root { --accent: #38bdf8; --correct: #4ade80; --bg: #0f172a; }
+        :root { 
+            --accent: #38bdf8; 
+            --correct: #4ade80; 
+            --bg: #0f172a; 
+            --grid-size: 3; 
+            /* THE SMOOTHNESS SECRETS */
+            --snap-speed: 0.5s;
+            --ease: cubic-bezier(0.2, 1, 0.3, 1);
+        }
 
         body {
-            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             background-color: var(--bg);
             margin: 0; padding: 0;
             display: flex; flex-direction: column;
@@ -20,58 +27,66 @@
             touch-action: none; user-select: none;
         }
 
-        #status { font-size: 1.2rem; margin-bottom: 25px; font-weight: 800; height: 30px; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        #status { font-size: 1.2rem; margin-bottom: 25px; font-weight: 800; height: 30px; transition: all 0.3s; }
 
         #game-container { position: relative; width: 92vw; max-width: 380px; }
         
         #game-board {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-gap: 2px;
-            background: rgba(255,255,255,0.05);
-            padding: 6px; border-radius: 12px;
+            grid-template-columns: repeat(var(--grid-size), 1fr);
+            grid-gap: 4px;
+            background: rgba(255,255,255,0.03);
+            padding: 8px; border-radius: 16px;
             width: 100%; box-sizing: border-box;
-            border: 2px solid #334155;
+            border: 2px solid #1e293b;
             position: relative;
-            transition: opacity 0.8s ease;
         }
 
         .tile {
             width: 100%; aspect-ratio: 1/1;
-            background-size: cover; background-position: center;
+            background-repeat: no-repeat;
+            border-radius: 8px;
             box-sizing: border-box; position: relative;
             cursor: grab; opacity: 0;
-            animation: flyIn 0.6s ease-out forwards;
-            transition: border 0.3s, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.2);
-            border: 1px solid rgba(255,255,255,0.1);
+            animation: flyIn 0.8s var(--ease) forwards;
+            /* smooth border/transform updates */
+            transition: border 0.4s, transform 0.4s var(--ease), opacity 0.3s;
+            border: 1px solid rgba(255,255,255,0.05);
+            will-change: transform, opacity;
         }
 
-        /* Recognize Right Place Logic */
-        .tile.correct-place { border: 2.5px solid var(--correct); z-index: 1; }
+        .tile.correct-place { border: 2.5px solid var(--correct); z-index: 1; box-shadow: 0 0 15px rgba(74, 222, 128, 0.2); }
 
         @keyframes flyIn {
-            from { transform: translate(180px, 180px) rotate(15deg); opacity: 0; }
-            to { transform: translate(0, 0) rotate(0); opacity: 1; }
+            from { transform: scale(0.5) rotate(-10deg); opacity: 0; }
+            to { transform: scale(1) rotate(0); opacity: 1; }
         }
 
-        /* Snap Feedback Animation */
-        .snap-anim { animation: snapPulse 0.35s ease-out; }
+        /* Hover target feedback (While Dragging) */
+        .tile.hovered { 
+            transform: scale(0.92); 
+            border: 3px solid var(--accent); 
+            filter: brightness(1.2);
+            z-index: 5;
+        }
+
+        /* Snap Pulse (Success) */
+        .snap-anim { animation: snapPulse 0.4s var(--ease); }
         @keyframes snapPulse {
-            0% { transform: scale(1.15); filter: brightness(1.6); }
-            100% { transform: scale(1); filter: brightness(1); }
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); filter: brightness(1.4); }
+            100% { transform: scale(1); }
         }
 
-        .tile.hovered { border: 4px solid var(--accent); z-index: 10; transform: scale(1.05); }
-
-        /* THE DRAGGING GHOST (Following user) */
+        /* THE GHOST - Smooth Follower */
         #drag-ghost {
-            position: fixed; background-size: cover; opacity: 0.8;
+            position: fixed; background-repeat: no-repeat; opacity: 0;
             pointer-events: none; z-index: 3000; display: none;
-            border-radius: 8px; box-shadow: 0 15px 40px rgba(0,0,0,0.6);
-            transform: scale(1.1); border: 2px solid white;
+            border-radius: 10px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            transform: scale(1.08); border: 2px solid white;
+            will-change: left, top, transform;
         }
 
-        /* THE SMART HAND TUTORIAL */
         #tutorial-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 2000; pointer-events: none; display: none;
@@ -81,29 +96,25 @@
             position: absolute; width: 60px; height: 60px;
             background: url('BubbleIdle.png') no-repeat center;
             background-size: contain;
-            /* Animation uses JS variables for start and end points */
             animation: smartHandMove 3.5s ease-in-out infinite;
         }
 
         @keyframes smartHandMove {
-            0% { transform: translate(var(--fromX), var(--fromY)) scale(1.1); opacity: 0; }
-            10% { transform: translate(var(--fromX), var(--fromY)) scale(1.1); opacity: 1; }
-            25% { transform: translate(var(--fromX), var(--fromY)) scale(0.85); } /* Grabbing */
-            60% { transform: translate(var(--toX), var(--toY)) scale(0.85); }    /* Dragging */
-            75% { transform: translate(var(--toX), var(--toY)) scale(1.1); opacity: 1; }
-            90% { transform: translate(var(--toX), var(--toY)) scale(1.1); opacity: 0; }
-            100% { opacity: 0; }
+            0%, 100% { transform: translate(var(--fromX), var(--fromY)) scale(1.1); opacity: 0; }
+            10% { opacity: 1; }
+            25% { transform: translate(var(--fromX), var(--fromY)) scale(0.8); }
+            65% { transform: translate(var(--toX), var(--toY)) scale(0.8); }
+            85% { opacity: 1; transform: translate(var(--toX), var(--toY)) scale(1.1); }
+            95% { opacity: 0; }
         }
 
-
-        /* WIN SCREEN REVEAL */
         #final-image {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            border-radius: 12px; opacity: 0; pointer-events: none;
-            transition: opacity 1.5s; z-index: 100; object-fit: cover;
+            border-radius: 16px; opacity: 0; pointer-events: none;
+            transition: opacity 2s var(--ease); z-index: 100; object-fit: cover;
         }
-        .reveal-state #game-board { opacity: 0; }
-        .reveal-state #final-image { opacity: 1; pointer-events: auto; transform: scale(1.02); }
+        .reveal-state #game-board { opacity: 0.1; filter: blur(5px); }
+        .reveal-state #final-image { opacity: 1; transform: scale(1.05); }
     </style>
 </head>
 <body>
@@ -112,19 +123,17 @@
 
     <div id="game-container">
         <div id="tutorial-overlay"><div id="tutorial-hand"></div></div>
-        <img id="final-image" src="PinkHair/pink hair (1).png">
+        <img id="final-image" src="girl\Girl.png">
         <div id="game-board"></div>
     </div>
 
     <div id="drag-ghost"></div>
 
     <script>
-        const originalOrder = [
-            'Books/BOOKS (1).png', 'Books/BOOKS (2).png', 'Books/BOOKS (3).png',
-            'Books/BOOKS (4).png', 'Hat/Hat boy.png', 'Hat/Hat boy 2.png',
-            'Hat/Hat girl.png', 'Hat/Hat with mustach.png',
-            'PinkHair/emojis.com punk-boy,-pink-hair (1).png'
-        ];
+        const puzzleImage = 'girl\Girl.png'; 
+        const gridSize = 3; 
+        const totalPieces = gridSize * gridSize;
+        const originalOrder = Array.from(Array(totalPieces).keys());
 
         let currentOrder = [];
         let draggingIndex = null;
@@ -136,204 +145,164 @@
         const overlay = document.getElementById('tutorial-overlay');
 
         function startGame() {
-            // Prep top row as matched, shuffle remaining 6
-            const topRow = originalOrder.slice(0, 3);
-            const restOfPieces = originalOrder.slice(3).sort(() => Math.random() - 0.5);
-            currentOrder = [...topRow, ...restOfPieces];
+            // Keep top 3 correct, shuffle bottom 6
+            const top = originalOrder.slice(0, 3);
+            const shuf = originalOrder.slice(3).sort(() => Math.random() - 0.5);
+            currentOrder = [...top, ...shuf];
             createBoard(true);
-            setTimeout(setSmartHint, 1800);
+            setTimeout(setSmartHint, 2000);
         }
 
         function createBoard(animated = true, dropPulseIdx = null) {
             board.innerHTML = '';
-            const bWidth = board.clientWidth;
-
-            currentOrder.forEach((src, index) => {
+            currentOrder.forEach((pieceId, index) => {
                 const tile = document.createElement('div');
                 tile.className = 'tile';
-                tile.style.backgroundImage = `url("${src}")`;
+                tile.style.backgroundImage = `url("${puzzleImage}")`;
+                tile.style.backgroundSize = `${gridSize * 100}% ${gridSize * 100}%`;
+                
+                const col = pieceId % gridSize;
+                const row = Math.floor(pieceId / gridSize);
+                tile.style.backgroundPosition = `${(col * (100 / (gridSize - 1)))}% ${(row * (100 / (gridSize - 1)))}%`;
+                
                 tile.dataset.index = index;
-
-                // Recognize 'True Home' Sticky state
-                if (src === originalOrder[index]) tile.classList.add('correct-place');
-                // Snap animation feedback
+                if (pieceId === index) tile.classList.add('correct-place');
                 if (index === dropPulseIdx) tile.classList.add('snap-anim');
 
                 if (animated) {
-                    const col = index % 3; const row = Math.floor(index / 3);
-                    tile.style.setProperty('--startX', `${(2-col)*(bWidth/3)}px`);
-                    tile.style.setProperty('--startY', `${(2-row)*(bWidth/3)}px`);
-                    tile.style.transform = 'translate(var(--startX), var(--startY))';
-                    tile.style.animationDelay = `${index * 0.05}s`;
+                    tile.style.animationDelay = `${index * 0.04}s`;
                 } else {
                     tile.style.animation = 'none'; tile.style.opacity = '1';
                 }
 
-                // D&D Logic
                 tile.onpointerdown = (e) => {
+                    if(isDone) return;
                     hideHint();
-                    startDrag(e, index, src);
+                    startDrag(e, index, pieceId);
                 };
                 board.appendChild(tile);
             });
             resetHintTimer();
         }
 
-        // --- FULL RE-ESTABLISHED DRAG AND SWAP ---
-
-        function startDrag(e, index, imgSrc) {
+        function startDrag(e, index, pieceId) {
             draggingIndex = index;
-            ghost.style.display = 'block';
-            ghost.style.backgroundImage = `url("${imgSrc}")`;
+            const targetTile = e.currentTarget;
+            const rect = targetTile.getBoundingClientRect();
             
-            const rect = e.target.getBoundingClientRect();
+            // Setup Ghost (The smooth mover)
+            ghost.style.display = 'block';
+            ghost.style.backgroundImage = `url("${puzzleImage}")`;
+            ghost.style.backgroundSize = `${gridSize * 100}% ${gridSize * 100}%`;
+            
+            const col = pieceId % gridSize;
+            const row = Math.floor(pieceId / gridSize);
+            ghost.style.backgroundPosition = `${(col * (100 / (gridSize - 1)))}% ${(row * (100 / (gridSize - 1)))}%`;
+            
             ghost.style.width = rect.width + 'px';
             ghost.style.height = rect.height + 'px';
-            
-            e.target.style.opacity = '0.1';
-            
-            updateGhostPos(e);
-            window.onpointermove = (m) => {
-                updateGhostPos(m);
-                // Hover tracking
+            ghost.style.left = rect.left + 'px';
+            ghost.style.top = rect.top + 'px';
+            ghost.style.transition = "none";
+            ghost.style.opacity = "1";
+
+            targetTile.style.opacity = '0.05';
+
+            const updatePos = (moveEvent) => {
+                const x = moveEvent.clientX - rect.width / 2;
+                const y = moveEvent.clientY - rect.height / 2;
+                ghost.style.left = x + 'px';
+                ghost.style.top = y + 'px';
+
+                // Hit detection for Magnetic Hover effect
                 document.querySelectorAll('.tile').forEach(t => t.classList.remove('hovered'));
-                const hit = document.elementFromPoint(m.clientX, m.clientY);
-                if (hit && hit.classList.contains('tile')) hit.classList.add('hovered');
+                const hit = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+                if (hit && hit.classList.contains('tile') && hit !== targetTile) {
+                    hit.classList.add('hovered');
+                }
             };
 
-          window.onpointerup = (upEvent) => {
-    // 1. Identify where we are dropping
-    const hitTarget = document.elementFromPoint(upEvent.clientX, upEvent.clientY);
-    const allTiles = document.querySelectorAll('.tile');
-    let finalDropIdx = null;
+            window.addEventListener('pointermove', updatePos);
 
-    if (hitTarget && hitTarget.classList.contains('tile')) {
-        finalDropIdx = parseInt(hitTarget.dataset.index);
-        
-        // --- CASE: SUCCESSFUL SWAP ---
-        if (finalDropIdx !== draggingIndex) {
-            const tileA = allTiles[draggingIndex]; // Piece A (Currently faded)
-            const tileB = allTiles[finalDropIdx];  // Piece B (The one being replaced)
+            window.addEventListener('pointerup', (upE) => {
+                window.removeEventListener('pointermove', updatePos);
+                const hit = document.elementFromPoint(upE.clientX, upE.clientY);
+                const tiles = document.querySelectorAll('.tile');
 
-            // Get coordinate math for both spots
-            const rectA = tileA.getBoundingClientRect();
-            const rectB = tileB.getBoundingClientRect();
+                if (hit && hit.classList.contains('tile') && hit !== targetTile) {
+                    const finalDropIdx = parseInt(hit.dataset.index);
+                    const rectB = hit.getBoundingClientRect();
 
-            // STEP 1: GLIDE PIECE A (GHOST) INTO PLACE
-            // We animate the ghost from your finger to the exact center of Piece B's slot
-            ghost.style.transition = "all 0.4s cubic-bezier(0.19, 1, 0.22, 1)";
-            ghost.style.left = rectB.left + 'px';
-            ghost.style.top = rectB.top + 'px';
-            ghost.style.opacity = "1"; // Make it solid for a "clear" look
+                    // 1. SLIDE GHOST TO TARGET SLOT
+                    ghost.style.transition = `all var(--snap-speed) var(--ease)`;
+                    ghost.style.left = rectB.left + 'px';
+                    ghost.style.top = rectB.top + 'px';
+                    ghost.style.transform = "scale(1)";
 
-            // STEP 2: GLIDE PIECE B INTO PIECE A'S OLD SPOT
-            tileB.style.zIndex = "100";
-            tileB.style.transition = "transform 0.4s cubic-bezier(0.19, 1, 0.22, 1)";
-            // The distance is simply the subtraction of the two coordinates
-            tileB.style.transform = `translate(${rectA.left - rectB.left}px, ${rectA.top - rectB.top}px)`;
+                    // 2. SLIDE TARGET PIECE TO STARTING SLOT
+                    hit.style.zIndex = "100";
+                    hit.style.transition = `transform var(--snap-speed) var(--ease)`;
+                    hit.style.transform = `translate(${rect.left - rectB.left}px, ${rect.top - rectB.top}px)`;
 
-            // STEP 3: WAIT FOR ANIMATION (400ms) BEFORE UPDATING DATA
-            setTimeout(() => {
-                const tmp = currentOrder[draggingIndex];
-                currentOrder[draggingIndex] = currentOrder[finalDropIdx];
-                currentOrder[finalDropIdx] = tmp;
-
-                finishAndRender(finalDropIdx);
-            }, 400);
-            
-            return;
-        }
-    }
-
-    // --- CASE: DROPPED ON NOTHING OR SAME SPOT ---
-    // Make Piece A (ghost) slide back to where it came from
-    const homeRect = allTiles[draggingIndex].getBoundingClientRect();
-    ghost.style.transition = "all 0.3s ease-out";
-    ghost.style.left = homeRect.left + 'px';
-    ghost.style.top = homeRect.top + 'px';
-    
-    setTimeout(() => finishAndRender(null), 300);
-};
-
-// CLEANUP AND CHECK WIN
-function finishAndRender(pulseIdx) {
-    draggingIndex = null; 
-    ghost.style.display = 'none';
-    ghost.style.transition = "none"; // Reset for next time
-    ghost.style.opacity = '1';
-    
-    window.onpointermove = null; 
-    window.onpointerup = null;
-
-    createBoard(false, pulseIdx);
-    checkWin();
-}
+                    // Wait for the "Physical glide" to finish
+                    setTimeout(() => {
+                        const tmp = currentOrder[draggingIndex];
+                        currentOrder[draggingIndex] = currentOrder[finalDropIdx];
+                        currentOrder[finalDropIdx] = tmp;
+                        completeSwap(finalDropIdx);
+                    }, 450);
+                } else {
+                    // Fail snap back
+                    ghost.style.transition = `all 0.3s var(--ease)`;
+                    ghost.style.left = rect.left + 'px';
+                    ghost.style.top = rect.top + 'px';
+                    ghost.style.transform = "scale(1)";
+                    setTimeout(() => completeSwap(null), 300);
+                }
+            }, { once: true });
         }
 
-        function updateGhostPos(e) {
-            ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + 'px';
-            ghost.style.top = (e.clientY - ghost.offsetHeight / 2) + 'px';
+        function completeSwap(pulseIdx) {
+            draggingIndex = null;
+            ghost.style.display = 'none';
+            createBoard(false, pulseIdx);
+            checkWin();
         }
-
-        // --- THE SMART BRAIN ---
 
         function setSmartHint() {
             if(isDone) return;
-            // Scan for first error
-            let firstErrorIdx = currentOrder.findIndex((val, i) => val !== originalOrder[i]);
-            if (firstErrorIdx === -1) return;
+            let err = currentOrder.findIndex((val, i) => val !== originalOrder[i]);
+            if (err === -1) return;
 
-            const neededPiece = originalOrder[firstErrorIdx];
-            const hiddenAtIdx = currentOrder.indexOf(neededPiece);
-
+            const neededPiece = originalOrder[err];
+            const foundAt = currentOrder.indexOf(neededPiece);
             const tiles = document.querySelectorAll('.tile');
             const boardRect = board.getBoundingClientRect();
             
-            const startLoc = tiles[hiddenAtIdx].getBoundingClientRect();
-            const endLoc = tiles[firstErrorIdx].getBoundingClientRect();
+            const A = tiles[foundAt].getBoundingClientRect();
+            const B = tiles[err].getBoundingClientRect();
 
-            overlay.style.setProperty('--fromX', `${startLoc.left - boardRect.left + (startLoc.width/3)}px`);
-            overlay.style.setProperty('--fromY', `${startLoc.top - boardRect.top + (startLoc.height/3)}px`);
-            overlay.style.setProperty('--toX', `${endLoc.left - boardRect.left + (endLoc.width/3)}px`);
-            overlay.style.setProperty('--toY', `${endLoc.top - boardRect.top + (endLoc.height/3)}px`);
-            
+            overlay.style.setProperty('--fromX', `${A.left - boardRect.left + 25}px`);
+            overlay.style.setProperty('--fromY', `${A.top - boardRect.top + 25}px`);
+            overlay.style.setProperty('--toX', `${B.left - boardRect.left + 25}px`);
+            overlay.style.setProperty('--toY', `${B.top - boardRect.top + 25}px`);
             overlay.style.display = 'block';
         }
 
         function resetHintTimer() {
             clearTimeout(hintTimer);
-            if (!isDone) hintTimer = setTimeout(setSmartHint, 5000);
+            if (!isDone) hintTimer = setTimeout(setSmartHint, 6000);
         }
 
-        function hideHint() {
-            overlay.style.display = 'none';
-            resetHintTimer();
-        }
-
-        // --- WIN CELEBRATION WITH DELAY ---
+        function hideHint() { overlay.style.display = 'none'; resetHintTimer(); }
 
         function checkWin() {
-            const winMatch = currentOrder.every((v, i) => v === originalOrder[i]);
-            if (winMatch) {
-                isDone = true; 
-                clearTimeout(hintTimer); hideHint();
-                
-                // 1. Confetti Burst
-                confetti({
-                    particleCount: 150,
-                    spread: 80,
-                    origin: { y: 0.65 },
-                    colors: ['#38bdf8', '#4ade80', '#e94560']
-                });
-
+            if (currentOrder.every((v, i) => v === originalOrder[i])) {
+                isDone = true;
+                confetti({ particleCount: 200, spread: 80, origin: { y: 0.7 } });
                 document.getElementById('status').innerText = "GALLERY RESTORED ✨";
                 document.getElementById('status').style.color = "#4ade80";
-
-                
-                // 2. Delayed Reveal
-                setTimeout(() => {
-                    document.getElementById('game-container').classList.add('reveal-state');
-                }, 1600); // 1.6s Delay
+                setTimeout(() => document.getElementById('game-container').classList.add('reveal-state'), 1000);
             }
         }
 
@@ -341,5 +310,3 @@ function finishAndRender(pulseIdx) {
     </script>
 </body>
 </html>
-
- 
