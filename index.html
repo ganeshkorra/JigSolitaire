@@ -3,60 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>JigSolitaire - Zero Artifact Pro</title>
+    <title>JigSolitaire - Pro Polish</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
         :root { 
-            --accent: #38bdf8; --correct: #4ade80; --bg: #0f172a; 
-            --grid-size: 3;
-            --slide-speed: 0.65s;
-            --natural-ease: cubic-bezier(0.25, 1, 0.5, 1);
+            --accent: #38bdf8; --bg: #0f172a; 
+            --tileColor: #1e293b; --labelColor: #ffffff;
+            --grid-cols: 3; --grid-rows: 3;
+            --slide-speed: 0.5s;
+            --natural-ease: cubic-bezier(0.2, 1, 0.3, 1);
         }
 
         body {
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             background-color: var(--bg); margin: 0; padding: 0;
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
             height: 100vh; width: 100vw; color: white; overflow: hidden;
             touch-action: none; user-select: none;
         }
 
-        #game-container { position: relative; width: 94vw; max-width: 380px; }
+        #status-container { text-align: center; margin-bottom: 20px; z-index: 10; }
+        #status { font-size: 1.2rem; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: var(--labelColor); }
+
+        #game-container { position: relative; width: 92vw; max-width: 400px; }
         
         #game-board {
             display: grid;
-            grid-template-columns: repeat(var(--grid-size), 1fr);
-            grid-gap: 1.5px;
-            background: #0f172a; padding: 4px; border-radius: 12px;
-            width: 100%; box-sizing: border-box;
-            border: 2.5px solid #334155; position: relative;
+            grid-template-columns: repeat(var(--grid-cols), 1fr);
+            grid-template-rows: repeat(var(--grid-rows), 1fr);
+            grid-gap: 2px; background: rgba(0,0,0,0.4); 
+            padding: 5px; border-radius: 12px;
+            width: 100%; box-sizing: border-box; border: 2px solid rgba(255,255,255,0.1);
         }
 
         .tile {
             width: 100%; aspect-ratio: 1/1; background-repeat: no-repeat;
-            border-radius: 4px; box-sizing: border-box;
-            cursor: grab; opacity: 1;
-            transition: opacity 0.2s ease;
+            border-radius: 4px; cursor: grab; opacity: 0;
+            background-color: var(--tileColor);
+            animation: boardEntrance 0.8s var(--natural-ease) both;
+            will-change: transform, opacity;
         }
 
-        /* 🧩 The Cluster logic: closes gaps when matched */
-        .tile.merged-left { border-left: none; margin-left: -2px; width: calc(100% + 2px); }
-        .tile.merged-top { border-top: none; margin-top: -2px; height: calc(100% + 2px); }
+        @keyframes boardEntrance {
+            0% { transform: translate3d(150px, 150px, 0) scale(0.6); opacity: 0; }
+            100% { transform: translate3d(0,0,0) scale(1); opacity: 1; }
+        }
 
-        /* 👻 THE GHOST LAYER (Improved CSS) */
+        /* The moving ghost */
         #drag-ghost {
             position: fixed; top: 0; left: 0;
-            pointer-events: none; /* User can't click the ghost, only through it */
-            z-index: 9999; 
-            visibility: hidden; /* HIDDEN UNTIL MAPPED */
-            will-change: transform;
+            pointer-events: none; z-index: 9999; 
+            visibility: hidden; will-change: transform;
         }
-
         .ghost-tile {
             position: absolute; background-repeat: no-repeat;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.8); 
-            border-radius: 6px; border: 1.5px solid white;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.6); 
+            border-radius: 8px; border: 2px solid rgba(255,255,255,0.8);
+            transform: scale(1.05); /* Slight lift effect */
+            filter: brightness(1.1);
+        }
+
+        /* Tutorial System */
+        #tutorial-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5000; pointer-events: none; display: none; }
+        #tutorial-hand {
+            position: absolute; width: 60px; height: 60px; background-size: contain; background-repeat: no-repeat;
+            animation: handGuide 3.5s ease-in-out infinite;
+        }
+        @keyframes handGuide {
+            0% { transform: translate(var(--fromX), var(--fromY)) scale(1); opacity: 0; }
+            15% { opacity: 1; }
+            30% { transform: translate(var(--fromX), var(--fromY)) scale(0.8); }
+            65% { transform: translate(var(--toX), var(--toY)) scale(0.8); }
+            85% { opacity: 1; transform: translate(var(--toX), var(--toY)) scale(1); }
+            100% { opacity: 0; }
         }
 
         #final-image {
@@ -69,104 +88,109 @@
 </head>
 <body>
 
+    <div id="status-container"><div id="status">Ready?</div></div>
+
     <div id="game-container">
-        <img id="final-image" src="girl/Girl.png">
+        <div id="tutorial-overlay"><div id="tutorial-hand"></div></div>
+        <img id="final-image" src="">
         <div id="game-board"></div>
     </div>
 
-    <!-- The Single-Layer Drag Plane -->
     <div id="drag-ghost"></div>
 
     <script>
-        const puzzleImg = 'girl/Girl.png';
-        const grid = 3; 
-        let order = Array.from(Array(grid * grid).keys());
-        let done = false;
+        window.game_object = {
+            GameElements: { MainImages_1: { data: "girl/Girl.png" } },
+            GameProperties: { 
+                HintTime: { amount: 5000 }, 
+                GridRows: { amount: 3 },
+                GridCols: { amount: 3 }
+            },
+            GameThemes: {
+                default: "Warm",
+                Warm: { background: "#edf2f7", tileColor: "#cbd5e0", labelColor: "#2d3748" }
+            },
+            Ui: { HandSprite: { data: "BubbleIdle.png" } }
+        };
+
+        const CFG = window.game_object;
+        const R = CFG.GameProperties.GridRows.amount;
+        const C = CFG.GameProperties.GridCols.amount;
+        const IMG = CFG.GameElements.MainImages_1.data;
+        const TOTAL = R * C;
+        
+        let order = Array.from(Array(TOTAL).keys());
+        let done = false, idleTimer = null;
         
         const board = document.getElementById('game-board');
         const ghost = document.getElementById('drag-ghost');
+        const overlay = document.getElementById('tutorial-overlay');
 
-        function start() {
+        function init() {
+            const theme = CFG.GameThemes[CFG.GameThemes.default];
+            document.documentElement.style.setProperty('--bg', theme.background);
+            document.documentElement.style.setProperty('--tileColor', theme.tileColor);
+            document.documentElement.style.setProperty('--labelColor', theme.labelColor);
+            document.documentElement.style.setProperty('--grid-cols', C);
+            document.documentElement.style.setProperty('--grid-rows', R);
+            
+            document.getElementById('final-image').src = IMG;
+            document.getElementById('tutorial-hand').style.backgroundImage = `url(${CFG.Ui.HandSprite.data})`;
+            
             order = order.sort(() => Math.random() - 0.5);
-            draw(false);
+            render(true);
+            setTimeout(() => { if(!done) { document.getElementById('status').innerText = "RESTORE IMAGE"; startIdleTimer(); } }, 2000);
         }
 
-        function draw(anim = true) {
+        function render(animate = true) {
             board.innerHTML = '';
             order.forEach((pid, idx) => {
                 const t = document.createElement('div');
                 t.className = 'tile';
-                t.style.backgroundImage = `url("${puzzleImg}")`;
-                t.style.backgroundSize = `${grid * 100}% ${grid * 100}%`;
-                const c = pid % grid, r = Math.floor(pid / grid);
-                t.style.backgroundPosition = `${(c * (100/(grid-1)))}% ${(r * (100/(grid-1)))}%`;
+                t.style.backgroundImage = `url("${IMG}")`;
+                t.style.backgroundSize = `${C * 100}% ${R * 100}%`;
+                const px = pid % C, py = Math.floor(pid / C);
+                t.style.backgroundPosition = `${(px * (100/(C-1)))}% ${(py * (100/(R-1)))}%`;
                 t.dataset.index = idx;
-                
-                if (pid === idx) {
-                    if (idx % grid !== 0 && order[idx-1] === idx-1) t.classList.add('merged-left');
-                    if (idx >= grid && order[idx-grid] === idx-grid) t.classList.add('merged-top');
-                }
 
-                t.onpointerdown = (e) => beginDrag(e, idx);
+                if (!animate) { t.style.animation = 'none'; t.style.opacity = '1'; }
+                else { t.style.animationDelay = `${idx * 0.05}s`; }
+                
+                t.onpointerdown = (e) => startDrag(e, idx);
                 board.appendChild(t);
             });
         }
 
-        // Logic for group moving
-        function getGroup(i) {
-            if (order[i] !== i) return [i];
-            const g = [], q = [i], vis = new Set();
-            while(q.length > 0) {
-                const n = q.shift();
-                if (vis.has(n)) continue; vis.add(n); g.push(n);
-                [n-1, n+1, n-grid, n+grid].forEach(nb => {
-                    if (nb >= 0 && nb < grid*grid && order[nb] === nb) {
-                        const sR = Math.floor(n/grid) === Math.floor(nb/grid);
-                        if ((nb === n-1 || nb === n+1) && !sR) return;
-                        q.push(nb);
-                    }
-                });
-            }
-            return g;
-        }
-
-        function beginDrag(e, startIdx) {
+        function startDrag(e, startIdx) {
             if(done) return;
+            hideHint();
             
-            const group = getGroup(startIdx);
             const tiles = document.querySelectorAll('.tile');
-            const pSize = tiles[0].offsetWidth;
-            const rS = tiles[startIdx].getBoundingClientRect();
+            const target = tiles[startIdx];
+            const rect = target.getBoundingClientRect();
+            
+            // MATH: Get distance from mouse to top-left of tile
+            const offX = e.clientX - rect.left;
+            const offY = e.clientY - rect.top;
 
-            // 1. GATHER OFFSET (Relative thumb position)
-            const offX = e.clientX - rS.left;
-            const offY = e.clientY - rS.top;
-
-            // 2. CLEAR & RE-FILL THE GHOST CONTAINER (While invisible)
+            // PREVENT FIRST PIECE JUMP: Clear the entrance animation manually
+            target.style.animation = 'none'; 
+            
+            // Setup Ghost
             ghost.innerHTML = '';
-            group.forEach(idx => {
-                const pid = order[idx];
-                const gT = document.createElement('div');
-                gT.className = 'ghost-tile';
-                gT.style.width = pSize + 'px'; gT.style.height = pSize + 'px';
-                gT.style.backgroundImage = `url("${puzzleImg}")`;
-                gT.style.backgroundSize = `${grid * 100}% ${grid * 100}%`;
-                const c = pid % grid, r = Math.floor(pid / grid);
-                gT.style.backgroundPosition = `${(c * (100/(grid-1)))}% ${(r * (100/(grid-1)))}%`;
-                
-                const cD = (idx % grid) - (startIdx % grid);
-                const rD = Math.floor(idx / grid) - Math.floor(startIdx / grid);
-                gT.style.transform = `translate3d(${cD * pSize}px, ${rD * pSize}px, 0)`;
-                ghost.appendChild(gT);
-                
-                // Hide real tile AFTER gathering
-                tiles[idx].style.opacity = '0';
-            });
+            const g = target.cloneNode(true);
+            g.className = 'ghost-tile';
+            g.style.width = rect.width + 'px'; 
+            g.style.height = rect.height + 'px';
+            g.style.opacity = '1'; 
+            ghost.appendChild(g);
 
-            // 3. MAP POSITION FIRST, THEN SHOW (Kills the (0,0) Artifact)
+            // CRITICAL FIX: Hide the board tile completely so nothing stays behind
+            target.style.visibility = 'hidden'; 
+
+            ghost.style.transition = 'none';
             ghost.style.transform = `translate3d(${e.clientX - offX}px, ${e.clientY - offY}px, 0)`;
             ghost.style.visibility = 'visible';
-            ghost.style.display = 'block';
 
             const move = (m) => {
                 ghost.style.transform = `translate3d(${m.clientX - offX}px, ${m.clientY - offY}px, 0)`;
@@ -180,54 +204,68 @@
                 if (hit && hit.classList.contains('tile')) {
                     const dropIdx = parseInt(hit.dataset.index);
                     if (dropIdx !== startIdx) {
-                        const newO = [...order];
-                        let valid = true; const maps = [];
-                        group.forEach(si => {
-                            const cd = (si%grid)-(startIdx%grid), rd = Math.floor(si/grid)-Math.floor(startIdx/grid);
-                            const ti = dropIdx + cd + (rd * grid);
-                            if (ti < 0 || ti >= grid*grid || (Math.abs((ti % grid) - ((dropIdx + cd) % grid)) > 0)) valid = false;
-                            maps.push({s:si, t:ti});
-                        });
+                        const targetRect = tiles[dropIdx].getBoundingClientRect();
+                        
+                        // Physics slide to new spot
+                        ghost.style.transition = `transform var(--slide-speed) var(--natural-ease)`;
+                        ghost.style.transform = `translate3d(${targetRect.left}px, ${targetRect.top}px, 0)`;
 
-                        if (valid) {
-                            const trB = hit.getBoundingClientRect();
-                            ghost.style.transition = `transform var(--slide-speed) var(--natural-ease)`;
-                            ghost.style.transform = `translate3d(${trB.left}px, ${trB.top}px, 0)`;
+                        // Displacement slide for the other piece
+                        tiles[dropIdx].style.zIndex = "10";
+                        tiles[dropIdx].style.transition = `transform var(--slide-speed) var(--natural-ease)`;
+                        tiles[dropIdx].style.transform = `translate3d(${rect.left - targetRect.left}px, ${rect.top - targetRect.top}px, 0)`;
 
-                            maps.forEach(m => {
-                                if (!group.includes(m.t)) {
-                                    const rectA = tiles[m.s].getBoundingClientRect(), rectB = tiles[m.t].getBoundingClientRect();
-                                    tiles[m.t].style.transition = `transform var(--slide-speed) var(--natural-ease)`;
-                                    tiles[m.t].style.transform = `translate3d(${rectA.left-rectB.left}px, ${rectA.top-rectB.top}px, 0)`;
-                                }
-                            });
-
-                            setTimeout(() => {
-                                maps.forEach(m => [newO[m.s], newO[m.t]] = [newO[m.t], newO[m.s]]);
-                                order = newO; cleanup();
-                            }, 660);
-                            return;
-                        }
+                        setTimeout(() => {
+                            [order[startIdx], order[dropIdx]] = [order[dropIdx], order[startIdx]];
+                            endMove();
+                        }, 510);
+                        return;
                     }
                 }
-                cleanup();
+                endMove();
             };
-            
+
+            function endMove() {
+                ghost.style.visibility = 'hidden';
+                render(false);
+                winCheck();
+                startIdleTimer();
+            }
+
             window.addEventListener('pointermove', move);
             window.addEventListener('pointerup', up);
         }
 
-        function cleanup() {
-            ghost.style.display = 'none';
-            ghost.style.visibility = 'hidden';
-            ghost.style.transition = 'none';
-            draw(false);
+        function showHint() {
+            if(done) return;
+            const correctPos = order.findIndex((v,i) => v!==i);
+            if(correctPos === -1) return;
+            const currentPos = order.indexOf(correctPos);
+            
+            const ts = document.querySelectorAll('.tile');
+            const bR = board.getBoundingClientRect();
+            const s = ts[currentPos].getBoundingClientRect(), t = ts[correctPos].getBoundingClientRect();
+            
+            overlay.style.setProperty('--fromX', `${s.left - bR.left + 25}px`);
+            overlay.style.setProperty('--fromY', `${s.top - bR.top + 25}px`);
+            overlay.style.setProperty('--toX', `${t.left - bR.left + 25}px`);
+            overlay.style.setProperty('--toY', `${t.top - bR.top + 25}px`);
+            overlay.style.display = 'block';
+        }
+
+        function hideHint() { overlay.style.display='none'; clearTimeout(idleTimer); }
+        function startIdleTimer() { clearTimeout(idleTimer); if(!done) idleTimer = setTimeout(showHint, CFG.GameProperties.HintTime.amount); }
+
+        function winCheck() {
             if (order.every((v,i) => v===i)) {
-                done = true; confetti();
-                document.getElementById('game-container').classList.add('reveal-state');
+                done = true;
+                confetti({particleCount: 150, spread: 70});
+                document.getElementById('status').innerText = "SUCCESS ✨";
+                setTimeout(() => document.getElementById('game-container').classList.add('reveal-state'), 1000);
             }
         }
-        window.onload = start;
+
+        window.onload = init;
     </script>
 </body>
 </html>
