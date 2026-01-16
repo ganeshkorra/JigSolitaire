@@ -64,16 +64,22 @@
                 repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px),
                 repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px);
             border: 2px solid rgba(255,255,255,0.3);
+            visibility: hidden; /* Hidden by default until animation starts */
         }
 
         @keyframes flyInFromBottomRight {
             0% { 
-                transform: translate3d(400px, 400px, 0) scale(0.5); 
-                opacity: 0; 
+                transform: translate3d(var(--sX), var(--sY), 600px) rotate(15deg) scale(0.6); 
+                opacity: 0;
+                visibility: visible;
+            }
+            10% {
+                opacity: 1;
             }
             100% { 
-                transform: translate3d(0, 0, 0) scale(1); 
-                opacity: 1; 
+                transform: translate3d(0, 0, 0) rotate(0) scale(1); 
+                opacity: 1;
+                visibility: visible;
             }
         }
 
@@ -223,6 +229,15 @@
 
         function renderBackAnimation() {
             board.innerHTML = '';
+            const boardRect = board.getBoundingClientRect();
+            
+            // Calculate the 9th piece position (bottom-right cell, index 8)
+            const tileWidth = boardRect.width / C;
+            const tileHeight = boardRect.height / R;
+            const pos9_row = Math.floor(8 / C); // row 2
+            const pos9_col = 8 % C; // col 2
+            const pos9_x = pos9_col * tileWidth;
+            const pos9_y = pos9_row * tileHeight;
             
             // Create all tiles first
             const tiles = [];
@@ -232,6 +247,19 @@
                 
                 const backTile = document.createElement('div');
                 backTile.className = 'back-tile';
+                
+                // Calculate THIS tile's position
+                const row = Math.floor(i / C);
+                const col = i % C;
+                const thisX = col * tileWidth;
+                const thisY = row * tileHeight;
+                
+                // Distance from 9th position to this tile's position
+                const startX = pos9_x - thisX;
+                const startY = pos9_y - thisY;
+                
+                backTile.style.setProperty('--sX', `${startX}px`);
+                backTile.style.setProperty('--sY', `${startY}px`);
                 
                 // Try to load the back image, but will show pattern if not available
                 if (BACK_IMG) {
@@ -262,7 +290,7 @@
                     t.classList.remove('back-animation');
                     t.classList.add('flip-all');
                     const backTile = t.querySelector('.back-tile');
-                    backTile.style.animationDelay = '0s'; // All flip at same time
+                    backTile.style.animationDelay = '1s'; // All flip at same time
                 });
                 
                 // After flip completes, show game tiles immediately
@@ -271,7 +299,7 @@
                     render(false); // NO animation delay for game tiles
                     document.getElementById('status').innerText = "RESTORE IMAGE";
                     startIdleTimer();
-                }, 600); // Duration of flip animation
+                }, 100); // Duration of flip animation
                 
             }, (lastTileDelay + flyInDuration) * 1000);
         }
@@ -290,7 +318,7 @@
                 t.dataset.index = idx;
 
                 if (!animate) { t.style.animation = 'none'; t.style.opacity = '1'; }
-                else { t.style.animationDelay = `${idx * 0.05}s`; }
+                else { t.style.animationDelay = `${idx * 0}s`; }
                 
                 t.onpointerdown = (e) => startDrag(e, idx);
                 board.appendChild(t);
@@ -312,7 +340,7 @@
             
             ghost.innerHTML = '';
             const g = target.cloneNode(true);
-            g.className = 'ghost-tile';
+            // g.className = 'ghost-tile';
             g.style.width = rect.width + 'px'; 
             g.style.height = rect.height + 'px';
             g.style.opacity = '1'; 
