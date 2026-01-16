@@ -38,16 +38,65 @@
 
         .tile {
             width: 100%; aspect-ratio: 1/1; background-repeat: no-repeat;
-            border-radius: 4px; cursor: grab; opacity: 0;
+            border-radius: 4px; cursor: grab;
             background-color: var(--tileColor);
-            animation: boardEntrance 0.8s var(--natural-ease) both;
             will-change: transform, opacity;
+            position: relative;
+        }
+        
+        .tile.game-tile {
+            opacity: 0;
+            animation: boardEntrance 0.8s var(--natural-ease) both;
         }
 
-        @keyframes boardEntrance {
-            0% { transform: translate3d(150px, 150px, 0) scale(0.6); opacity: 0; }
-            100% { transform: translate3d(0,0,0) scale(1); opacity: 1; }
+        /* Back tile animation */
+        .back-tile {
+            position: absolute;
+            width: 100%; height: 100%;
+            background-repeat: no-repeat;
+            background-size: cover;
+            background-position: center;
+            border-radius: 4px;
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+            background-color: #1e90ff;
+            background-image: 
+                repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px),
+                repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px);
+            border: 2px solid rgba(255,255,255,0.3);
         }
+
+        @keyframes flyInFromBottomRight {
+            0% { 
+                transform: translate3d(400px, 400px, 0) scale(0.5); 
+                opacity: 0; 
+            }
+            100% { 
+                transform: translate3d(0, 0, 0) scale(1); 
+                opacity: 1; 
+            }
+        }
+
+        @keyframes flipAndHide {
+            0% {
+                transform: rotateY(0deg);
+                opacity: 1;
+            }
+            100% { 
+                transform: rotateY(180deg); 
+                opacity: 0;
+            }
+        }
+
+        .tile.back-animation .back-tile {
+            animation: flyInFromBottomRight 0.5s var(--natural-ease) forwards;
+        }
+
+        .tile.flip-all .back-tile {
+            animation: flipAndHide 0.6s var(--natural-ease) forwards;
+        }
+
+
 
         /* The moving ghost */
         #drag-ghost {
@@ -59,7 +108,7 @@
             position: absolute; background-repeat: no-repeat;
             box-shadow: 0 25px 50px rgba(0,0,0,0.6); 
             border-radius: 8px; border: 2px solid rgba(255,255,255,0.8);
-            transform: scale(1.05); /* Slight lift effect */
+            transform: scale(1.05);
             filter: brightness(1.1);
         }
 
@@ -99,28 +148,57 @@
     <div id="drag-ghost"></div>
 
     <script>
-        window.game_object = {
-            GameElements: { MainImages_1: { data: "girl/Girl.png" } },
+
+         // =========================================================
+    //  GLOBAL CONFIGURATION (The Source of Truth)
+    // =========================================================
+      /*!{{GAME_OBJECT}}*/window.game_object = {
+            GameElements: { 
+                MainImages_1: { 
+                name: "Main Image 1",
+                data: "girl/Girl.png"
+             },
+
+            BackImage: {
+                name: "Back Image",
+                data: "back.png"
+            }
+        },
             GameProperties: { 
-                HintTime: { amount: 5000 }, 
-                GridRows: { amount: 3 },
-                GridCols: { amount: 3 }
+                HintTime: {
+                    name: "Hint Time",
+                    amount: 5000 }, 
+                GridRows: {
+                    name: "Grid Rows",
+                    amount: 3 },
+                GridCols: { 
+                    name: "Grid Columns",
+                    amount: 3 }
             },
             GameThemes: {
                 default: "Warm",
                 Warm: { background: "#edf2f7", tileColor: "#cbd5e0", labelColor: "#2d3748" }
             },
-            Ui: { HandSprite: { data: "BubbleIdle.png" } }
+            Ui: { HandSprite: {
+                name: "Hand Sprite",
+                data: "BubbleIdle.png" } }
         };
 
+
+        // =========================================================
+    //  GAME LOGIC      
+    // =========================================================
+    
         const CFG = window.game_object;
         const R = CFG.GameProperties.GridRows.amount;
         const C = CFG.GameProperties.GridCols.amount;
         const IMG = CFG.GameElements.MainImages_1.data;
+        const BACK_IMG = CFG.GameElements.BackImage.data;
         const TOTAL = R * C;
         
         let order = Array.from(Array(TOTAL).keys());
         let done = false, idleTimer = null;
+        let animationComplete = false;
         
         const board = document.getElementById('game-board');
         const ghost = document.getElementById('drag-ghost');
@@ -138,15 +216,73 @@
             document.getElementById('tutorial-hand').style.backgroundImage = `url(${CFG.Ui.HandSprite.data})`;
             
             order = order.sort(() => Math.random() - 0.5);
-            render(true);
-            setTimeout(() => { if(!done) { document.getElementById('status').innerText = "RESTORE IMAGE"; startIdleTimer(); } }, 2000);
+            
+            // Start with back animation
+            renderBackAnimation();
+        }
+
+        function renderBackAnimation() {
+            board.innerHTML = '';
+            
+            // Create all tiles first
+            const tiles = [];
+            for (let i = 0; i < TOTAL; i++) {
+                const t = document.createElement('div');
+                t.className = 'tile back-animation';
+                
+                const backTile = document.createElement('div');
+                backTile.className = 'back-tile';
+                
+                // Try to load the back image, but will show pattern if not available
+                if (BACK_IMG) {
+                    const img = new Image();
+                    img.onload = () => {
+                        backTile.style.backgroundImage = `url("${BACK_IMG}")`;
+                    };
+                    img.src = BACK_IMG;
+                }
+                
+                t.appendChild(backTile);
+                t.dataset.index = i;
+                
+                // Stagger the fly-in animation
+                backTile.style.animationDelay = `${i * 0.1}s`;
+                
+                board.appendChild(t);
+                tiles.push(t);
+            }
+            
+            // After all tiles have flown in, flip them all at once
+            const lastTileDelay = (TOTAL - 1) * 0.1;
+            const flyInDuration = 0.5;
+            
+            setTimeout(() => {
+                // Remove back-animation class and add flip-all to all tiles simultaneously
+                tiles.forEach(t => {
+                    t.classList.remove('back-animation');
+                    t.classList.add('flip-all');
+                    const backTile = t.querySelector('.back-tile');
+                    backTile.style.animationDelay = '0s'; // All flip at same time
+                });
+                
+                // After flip completes, show game tiles immediately
+                setTimeout(() => {
+                    animationComplete = true;
+                    render(false); // NO animation delay for game tiles
+                    document.getElementById('status').innerText = "RESTORE IMAGE";
+                    startIdleTimer();
+                }, 600); // Duration of flip animation
+                
+            }, (lastTileDelay + flyInDuration) * 1000);
         }
 
         function render(animate = true) {
+            if (!animationComplete) return;
+            
             board.innerHTML = '';
             order.forEach((pid, idx) => {
                 const t = document.createElement('div');
-                t.className = 'tile';
+                t.className = 'tile game-tile';
                 t.style.backgroundImage = `url("${IMG}")`;
                 t.style.backgroundSize = `${C * 100}% ${R * 100}%`;
                 const px = pid % C, py = Math.floor(pid / C);
@@ -162,21 +298,18 @@
         }
 
         function startDrag(e, startIdx) {
-            if(done) return;
+            if(done || !animationComplete) return;
             hideHint();
             
             const tiles = document.querySelectorAll('.tile');
             const target = tiles[startIdx];
             const rect = target.getBoundingClientRect();
             
-            // MATH: Get distance from mouse to top-left of tile
             const offX = e.clientX - rect.left;
             const offY = e.clientY - rect.top;
 
-            // PREVENT FIRST PIECE JUMP: Clear the entrance animation manually
             target.style.animation = 'none'; 
             
-            // Setup Ghost
             ghost.innerHTML = '';
             const g = target.cloneNode(true);
             g.className = 'ghost-tile';
@@ -185,7 +318,6 @@
             g.style.opacity = '1'; 
             ghost.appendChild(g);
 
-            // CRITICAL FIX: Hide the board tile completely so nothing stays behind
             target.style.visibility = 'hidden'; 
 
             ghost.style.transition = 'none';
@@ -206,11 +338,9 @@
                     if (dropIdx !== startIdx) {
                         const targetRect = tiles[dropIdx].getBoundingClientRect();
                         
-                        // Physics slide to new spot
                         ghost.style.transition = `transform var(--slide-speed) var(--natural-ease)`;
                         ghost.style.transform = `translate3d(${targetRect.left}px, ${targetRect.top}px, 0)`;
 
-                        // Displacement slide for the other piece
                         tiles[dropIdx].style.zIndex = "10";
                         tiles[dropIdx].style.transition = `transform var(--slide-speed) var(--natural-ease)`;
                         tiles[dropIdx].style.transform = `translate3d(${rect.left - targetRect.left}px, ${rect.top - targetRect.top}px, 0)`;
